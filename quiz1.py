@@ -5,7 +5,7 @@ import numpy as np
 import open3d as o3d
 import polyscope as ps
 
-from quiz1_algorithms import Algorithms as algo
+from quiz1_algorithms import Algorithms
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +46,7 @@ def visualize(points: np.ndarray, labels: np.ndarray, k: int) -> None:
     ps.set_up_dir("z_up")
     ps.set_ground_plane_mode("none")
 
+
     # 1. Register main point cloud
     cloud = ps.register_point_cloud("Processed Point Cloud", points, radius=0.0015)
     cloud.set_point_render_mode("quad")
@@ -69,11 +70,42 @@ def visualize(points: np.ndarray, labels: np.ndarray, k: int) -> None:
 
     ps.show()
 
+def visulise_kmeans(centroids, assignment, points):
+    ps.init()
+
+    # points: (N,3)
+    # centroids: (k,3)
+    # assignment: (N,)
+
+    pc = ps.register_point_cloud("Points", points, radius=0.0015)
+
+    k = len(centroids)
+    rng = np.random.default_rng(0)
+    cluster_colors = rng.random((k, 3))
+
+    point_colors = cluster_colors[assignment - 1]
+
+    pc.add_color_quantity(
+        "Cluster",
+        point_colors,
+        enabled=True
+    )
+
+    centroid_pc = ps.register_point_cloud(
+        "Centroids",
+        centroids,
+    )
+
+    centroid_pc.set_radius(0.005)
+    centroid_pc.set_color((1,0,0))
+
+    ps.show()
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
+    algo = Algorithms()
     parser = argparse.ArgumentParser(description="Point Cloud Segmentation pipeline (K-Means -> PCA -> SVM)")
     parser.add_argument("path", nargs="?", default="airport_downsample.ply")
     parser.add_argument("-k", "--clusters", type=int, default=6, help="Number of k-means clusters (default: 6)")
@@ -90,7 +122,7 @@ def main() -> None:
     # once the clustering is solved, you might consider saving the cluster in a .npy file
     # np.save("cluster_labels.npy", cluster_labels)
     # cluster_labels = np.load("cluster_labels.npy")
-    algo.k_means()
+    k_centroids, k_assingment = algo.kmeans_ignore_ground(points, 20)
 
     # 3. Feature Extraction (PCA)
 
@@ -99,7 +131,8 @@ def main() -> None:
     # 5. SVM Classification
 
     # 6. Visualization
-    visualize(points, point_gt_labels, args.clusters)
+    #visualize(points, point_gt_labels, args.clusters)
+    visulise_kmeans(k_centroids, k_assingment, points)
 
 
 if __name__ == "__main__":
