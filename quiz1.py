@@ -84,6 +84,8 @@ def visulise_kmeans(centroids, assignment, points):
     cluster_colors = rng.random((k, 3))
 
     point_colors = cluster_colors[assignment - 1]
+    print(point_colors)
+    print(np.shape(point_colors))
 
     pc.add_color_quantity(
         "Cluster",
@@ -122,7 +124,7 @@ def main() -> None:
     # once the clustering is solved, you might consider saving the cluster in a .npy file
     # np.save("cluster_labels.npy", cluster_labels)
     # cluster_labels = np.load("cluster_labels.npy")
-    k_centroids, k_assingment = algo.kmeans_ignore_ground(points, 20)
+    k_centroids, k_assingment, points_no_floor = algo.k_means(points, 6)
 
     # 3. Feature Extraction (PCA)
 
@@ -131,8 +133,8 @@ def main() -> None:
     # 5. SVM Classification
 
     # 6. Visualization
-    #visualize(points, point_gt_labels, args.clusters)
-    visulise_kmeans(k_centroids, k_assingment, points)
+    visualize(points, point_gt_labels, args.clusters)
+    visulise_kmeans(k_centroids, k_assingment, points_no_floor)
 
 
 if __name__ == "__main__":

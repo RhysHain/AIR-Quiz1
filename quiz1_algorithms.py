@@ -3,6 +3,7 @@
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
+import open3d as o3d
 import numpy as np
 import time
 
@@ -13,44 +14,29 @@ class Algorithms:
     def __init__(self):
         self.rng = np.random.default_rng(4)
 
-    def k_means(self, points, k):
+    def k_means_algo(self, points, k):
         #_points (array): data points in the shape of [number of data points, number of features]
         # k (int): number of clusters
         print(f"Attempting to Cluster {len(points)} points into {k} clusters")
-        # TODO initialise the centroids using rng.choice() function within the domain of the point set
-        # IMPORTANT: Two centroids cannot be the same number
         centroids = self.rng.choice(points, size=k, replace=False)
 
-        # Assign points to clusters
-
-        # TODO: initialize an array with zeros equivalent to number of points. Each point will have an assignment [0/1/2].
         assignment = np.zeros(len(points), dtype=int)
 
         assignment_prev = None
-        # TODO write the condition for iteration
-        # Tip 1. Starting the assignment
-        # Tip 2. When to stop the iteration
+ 
         iterations = 0
         start_time = time.perf_counter()
-        while assignment_prev is None or any(assignment_prev!=assignment): #ans : assignment_prev is None or any(assignment_prev != assignment)
-            assignment_prev= np.copy(assignment) # First keep track of the latest assignment
+        while assignment_prev is None or any(assignment_prev!=assignment):
+            assignment_prev= np.copy(assignment) 
 
             # First iterate over all points
             for i, point in enumerate(points):
-
-                # TODO calculate the Euclidean distance (distance2) from each point to the centroids
-                # Tip: distance2 should be of length 3
                 distances2 = np.linalg.norm(centroids - point, axis=1)
-                # TODO calculate the closest centroid for the point
-                # Tip: see how np.argmin(...) works
                 closest_index = np.argmin(distances2)
-                # TODO populate the assignment array with the corresponding centroid
                 assignment[i] = closest_index
 
             # Second calculate new centroids
             for i in range(k):
-                # TODO replace centroids with the mean of points assigned to that centroid
-                # Tip: Only select the points assigned to each index value
                 centroids[i] = points[assignment==i].mean(axis=0)
 
             iterations += 1
@@ -61,29 +47,96 @@ class Algorithms:
 
         return centroids, assignment
     
-    def kmeans_ignore_ground(self, points, k, ground_threshold=0.2):
+    def remove_floor(self, points, cell_size=0.5, initial_window=1, max_window=8,
+                            slope=0.1, initial_elevation_threshold=0.1, max_elevation_threshold=0.5,
+                            classification_threshold=0.1, min_points_above=3):
+        """
+        classification_threshold (float): tight fixed threshold used ONLY for final point 
+                                        classification against the ground surface. 
+                                        Keep this small — it is the maximum height above 
+                                        the reconstructed ground a point can be to be 
+                                        called floor. Rooftops will exceed this since they
+                                        sit well above the reconstructed ground surface.
+        """
+        x = points[:, 0]
+        y = points[:, 1]
+        z = points[:, 2]
 
-        # Detect ground
-        ground_mask = points[:, 2] < ground_threshold
+        x_min, x_max = x.min(), x.max()
+        y_min, y_max = y.min(), y.max()
 
-        ground_points = points[ground_mask]
-        non_ground_points = points[~ground_mask]
+        cols = int(np.ceil((x_max - x_min) / cell_size)) + 1
+        rows = int(np.ceil((y_max - y_min) / cell_size)) + 1
 
-        # Run kmeans only on objects
-        centroids, obj_assignment = self.k_means(non_ground_points, k)
+        col_indices = ((x - x_min) / cell_size).astype(int)
+        row_indices = ((y - y_min) / cell_size).astype(int)
 
-        # Combine assignments
-        assignment = np.zeros(len(points), dtype=int)
+        # Build minimum Z grid
+        min_z_grid = np.full((rows, cols), np.inf)
+        for idx in range(len(points)):
+            r, c = row_indices[idx], col_indices[idx]
+            if z[idx] < min_z_grid[r, c]:
+                min_z_grid[r, c] = z[idx]
 
-        assignment[ground_mask] = 0
-        assignment[~ground_mask] = obj_assignment + 1
+        ground_surface = np.where(np.isinf(min_z_grid), np.nan, min_z_grid)
 
-        # Add ground centroid (optional)
-        if len(ground_points) > 0:
-            ground_centroid = np.mean(ground_points, axis=0)
-            centroids = np.vstack([ground_centroid, centroids])
+        for c in range(cols):
+            col = ground_surface[:, c]
+            mask = np.isnan(col)
+            if mask.all():
+                continue
+            indices = np.where(~mask)[0]
+            ground_surface[:, c] = np.interp(np.arange(rows), indices, col[indices])
 
-        return centroids, assignment
+        from scipy.ndimage import minimum_filter, maximum_filter
+
+        window_size = initial_window
+        prev_surface = ground_surface.copy()
+
+        while window_size <= max_window:
+            eroded = minimum_filter(prev_surface, size=window_size)
+            opened = maximum_filter(eroded, size=window_size)
+
+            elevation_threshold = min(
+                initial_elevation_threshold + slope * window_size * cell_size,
+                max_elevation_threshold
+            )
+            new_surface = np.where(
+                (prev_surface - opened) < elevation_threshold,
+                opened,
+                prev_surface
+            )
+            prev_surface = new_surface
+            window_size *= 2
+
+        ground_surface_final = prev_surface
+
+        # Use a fixed tight threshold for classification, not the scaled PMF threshold
+        # This is the key change — rooftops sit far above ground_surface_final,
+        # so a small classification_threshold cleanly separates them from the true floor
+        point_ground_z = ground_surface_final[row_indices, col_indices]
+        elevation_above_ground = z - point_ground_z
+        is_floor_candidate = elevation_above_ground < classification_threshold
+
+        # Vertical density check — reject candidates with many points above (bases of objects)
+        cell_flat = row_indices * cols + col_indices
+        points_above_count = np.zeros(rows * cols, dtype=int)
+        np.add.at(points_above_count, cell_flat[~is_floor_candidate], 1)
+        has_objects_above = points_above_count[cell_flat] > min_points_above
+
+        is_floor = is_floor_candidate & ~has_objects_above
+
+        floor_removed = points[~is_floor]
+        floor_points = points[is_floor]
+
+        print(f"PMF v4 removed {is_floor.sum()} floor points, {len(floor_removed)} points remaining.")
+        return floor_removed, floor_points
+
+    def k_means(self, points, k):
+        points_no_floor, floor_points = self.remove_floor(points)
+        centroids, assignment = self.k_means_algo(points_no_floor, k)
+        # centroids, assignment = self.k_means_algo(points, k)
+        return centroids, assignment, points_no_floor
 
     def pca(self):
         pass
