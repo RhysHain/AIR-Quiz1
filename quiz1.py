@@ -90,15 +90,16 @@ def main() -> None:
     # 1. Load Data
     ## returns points and labels
     if os.path.exists("Airport_Scan_Points.npy"):
-        print("Loading saved cluster data...")
+        print("Loading saved Scan Data")
         points = np.load("Airport_Scan_Points.npy")
         point_gt_labels = np.load("Airport_Scan_Label.npy")
+        print(f"Loaded {len(points)} points from Airport_Scan_Points.npy")
     else:
-        print("Running K-Means clustering...")
+        print("Extracting data")
         points, point_gt_labels = load_ply_point_cloud(args.path)
         np.save("Airport_Scan_Points.npy", points)
         np.save("Airport_Scan_Label.npy", point_gt_labels)
-    print(f"Loaded {len(points)} points from {args.path}")
+        print(f"Loaded {len(points)} points from {args.path}")
 
 
     # 2. Clustering
