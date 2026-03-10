@@ -60,10 +60,9 @@ class Algorithms:
         pca_pc2 = np.zeros((k, 3))
         pca_pc3 = np.zeros((k, 3))
         features = np.zeros((k, 3))  # linearity, planarity, scattering
-        scaled = StandardScaler()
-        scaled = scaled.fit_transform(points)
+        eigvals = np.zeros((k, 3))
         for i in range(k):
-            cluster_points = scaled[cluster_labels == i]
+            cluster_points = points[cluster_labels == i]
 
             if len(cluster_points) == 0:
                 # empty cluster, skip
@@ -74,16 +73,16 @@ class Algorithms:
             pca_centers[i] = center
 
             # PCA using scikit-learn
-            if len(cluster_points) > 1:
+            if len(cluster_points) >= 1:
                 pca_model = PCA(n_components=3)
                 pca_model.fit(cluster_points)
 
                 pc_vectors = pca_model.components_       # shape (3,3)
-                eigvals = pca_model.explained_variance_  # shape (3,)
+                eigvals[i] = pca_model.explained_variance_  # shape (3,)
             else:
                 # For a single point, use dummy axes
                 pc_vectors = np.eye(3)
-                eigvals = np.array([0.0, 0.0, 0.0])
+                eigvals[i] = np.array([0.0, 0.0, 0.0])
 
             # Assign principal axes
             pca_pc1[i] = pc_vectors[0]
@@ -91,7 +90,7 @@ class Algorithms:
             pca_pc3[i] = pc_vectors[2]
 
             # Compute geometric features
-            l1, l2, l3 = eigvals
+            l1, l2, l3 = eigvals[i]
 
             if l1 > 0:
                 linearity = (l1 - l2) / l1
@@ -104,7 +103,7 @@ class Algorithms:
 
             features[i] = [linearity, planarity, scattering]
 
-        return features, pca_centers, pca_pc1, pca_pc2, pca_pc3
+        return features, pca_centers, pca_pc1, pca_pc2, pca_pc3, eigvals
     
     def generate_cluster_ground_truth(self, cluster_labels, point_gt_labels, k):
 
@@ -123,12 +122,18 @@ class Algorithms:
 
         return cluster_gt
     
-    def svm(self, features, cluster_gt):
+    def svm(self, features, cluster_gt, eigvals):
+
+        X = np.hstack([features, eigvals]) 
+
+        # Scale before SVM
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
         svm_model = SVC(kernel='linear', gamma=0.01, C=10, class_weight="balanced")
 
-        svm_model.fit(features, cluster_gt)
+        svm_model.fit(X_scaled, cluster_gt)
 
-        predictions = svm_model.predict(features)
+        predictions = svm_model.predict(X_scaled)
 
         return predictions
 

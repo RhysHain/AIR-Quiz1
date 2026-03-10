@@ -66,10 +66,10 @@ def visualize(points: np.ndarray, labels: np.ndarray, cluster_labels: np.ndarray
         enabled=True
     )
     # 4. Register PCA visualization (Cluster Centers and Principal Components)
-    pca_cloud = ps.register_point_cloud("Cluster PCA Centers", pca_centers, radius=0.02)
-    pca_cloud.add_vector_quantity( "PC1 (Major)", pca_pc1, enabled=True, color=(1,0,0), vectortype="ambient")
-    pca_cloud.add_vector_quantity( "PC2 (Minor)", pca_pc2, enabled=False, color=(0,1,0), vectortype="ambient")
-    pca_cloud.add_vector_quantity( "PC3 (Normal)", pca_pc3, enabled=False, color=(0,0,1), vectortype="ambient")
+    pca_cloud = ps.register_point_cloud("Cluster PCA Centers", pca_centers, radius=0.002)
+    pca_cloud.add_vector_quantity("PC1 (Major)", pca_pc1, enabled=True, color=(1, 0, 0), vectortype="ambient")
+    pca_cloud.add_vector_quantity("PC2 (Minor)", pca_pc1, enabled=True, color=(0, 1, 0), vectortype="ambient")
+    pca_cloud.add_vector_quantity("PC3 (Normal)", pca_pc1, enabled=True, color=(0, 0, 1), vectortype="ambient")
     # 5. Add SVM Predictions
     cloud.add_scalar_quantity( "Cluster Ground Truth", cluster_gt[cluster_labels], enabled=False)
     cloud.add_scalar_quantity("SVM Predictions", point_predictions, enabled=True)
@@ -89,41 +89,31 @@ def main() -> None:
 
     # 1. Load Data
     ## returns points and labels
-    points, point_gt_labels = load_ply_point_cloud(args.path)
+    if os.path.exists("Airport_Scan_Points.npy"):
+        print("Loading saved cluster data...")
+        points = np.load("Airport_Scan_Points.npy")
+        point_gt_labels = np.load("Airport_Scan_Label.npy")
+    else:
+        print("Running K-Means clustering...")
+        points, point_gt_labels = load_ply_point_cloud(args.path)
+        np.save("Airport_Scan_Points.npy", points)
+        np.save("Airport_Scan_Label.npy", point_gt_labels)
     print(f"Loaded {len(points)} points from {args.path}")
 
-    # You might want to create functions for each of the following points to keep the code clean
 
     # 2. Clustering
-
-    # sil_scores = []
-
-    # for k in range(2, 10):
-    #     kmeans = KMeans(n_clusters=k, init='k-means++', n_init=10, random_state=42)
-    #     labels = kmeans.fit_predict(points)
-    #     score = silhouette_score(points, labels)
-    #     sil_scores.append(score)
-
-    # plt.plot(range(2, 10), sil_scores, marker='o')
-    # plt.xlabel('Number of clusters k')
-    # plt.ylabel('Silhouette Score')
-    # plt.title('Silhouette Analysis for Optimal k')
-    # plt.show()
-
-    centroids, cluster_labels = algo.k_means(points, args.clusters)
-
-    # if os.path.exists("cluster_labels.npy"):
-    #     print("Loading saved cluster data...")
-    #     cluster_labels = np.load("cluster_labels.npy")
-    #     centroids = np.load("cluster_centroids.npy")
-    # else:
-    #     print("Running K-Means clustering...")
-    #     centroids, cluster_labels = algo.k_means(points, args.clusters)
-    #     np.save("cluster_labels.npy", cluster_labels)
-    #     np.save("cluster_centroids.npy", centroids)
+    if os.path.exists("cluster_labels.npy"):
+        print("Loading saved cluster data...")
+        cluster_labels = np.load("cluster_labels.npy")
+        centroids = np.load("cluster_centroids.npy")
+    else:
+        print("Running K-Means clustering...")
+        centroids, cluster_labels = algo.k_means(points, args.clusters)
+        np.save("cluster_labels.npy", cluster_labels)
+        np.save("cluster_centroids.npy", centroids)
 
     # 3. Feature Extraction (PCA)
-    features, pca_centers, pca_pc1, pca_pc2, pca_pc3 = algo.extract_cluster_features(
+    features, pca_centers, pca_pc1, pca_pc2, pca_pc3, eigvals = algo.extract_cluster_features(
         points,
         cluster_labels,
         args.clusters
@@ -131,9 +121,7 @@ def main() -> None:
     # 4. Ground Truth Generation (for training SVM)
     cluster_gt = algo.generate_cluster_ground_truth( cluster_labels, point_gt_labels, args.clusters)
     # 5. SVM Classification
-    print("Cluster GT labels:", cluster_gt)
-    print("Unique classes:", np.unique(cluster_gt))
-    predictions = algo.svm(features, cluster_gt)
+    predictions = algo.svm(features, cluster_gt, eigvals)
     point_predictions = predictions[cluster_labels]
     # 6. Visualization
     visualize(points, point_gt_labels, cluster_labels, args.clusters,  
