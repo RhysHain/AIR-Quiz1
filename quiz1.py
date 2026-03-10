@@ -4,6 +4,7 @@ from typing import Optional, Tuple, List, Dict, Any
 import numpy as np
 import open3d as o3d
 import polyscope as ps
+import os
 
 from quiz1_algorithms import Algorithms
 
@@ -37,7 +38,7 @@ def load_ply_point_cloud(path: str) -> Tuple[np.ndarray, Optional[np.ndarray]]:
 # ---------------------------------------------------------------------------
 # Visualization
 # ---------------------------------------------------------------------------
-def visualize(points: np.ndarray, labels: np.ndarray, k: int) -> None:
+def visualize(points: np.ndarray, labels: np.ndarray, cluster_labels: np.ndarray, k: int) -> None:
     """
     Set up Polyscope serialization.
     """
@@ -56,7 +57,11 @@ def visualize(points: np.ndarray, labels: np.ndarray, k: int) -> None:
     cloud.add_scalar_quantity("Ground truth data", labels, enabled=False)
     
     # 3. Add colors for clusters
-
+    cloud.add_scalar_quantity(
+        "KMeans Clusters",
+        cluster_labels,
+        enabled=True
+    )
     # 4. Register PCA visualization (Cluster Centers and Principal Components)
     # you can register pointclouds: https://polyscope.run/py/structures/point_cloud/basics/
     # you can then add vector quantities: https://polyscope.run/py/structures/point_cloud/vector_quantities/
@@ -70,38 +75,6 @@ def visualize(points: np.ndarray, labels: np.ndarray, k: int) -> None:
 
     ps.show()
 
-def visulise_kmeans(centroids, assignment, points):
-    ps.init()
-
-    # points: (N,3)
-    # centroids: (k,3)
-    # assignment: (N,)
-
-    pc = ps.register_point_cloud("Points", points, radius=0.0015)
-
-    k = len(centroids)
-    rng = np.random.default_rng(0)
-    cluster_colors = rng.random((k, 3))
-
-    point_colors = cluster_colors[assignment - 1]
-    print(point_colors)
-    print(np.shape(point_colors))
-
-    pc.add_color_quantity(
-        "Cluster",
-        point_colors,
-        enabled=True
-    )
-
-    centroid_pc = ps.register_point_cloud(
-        "Centroids",
-        centroids,
-    )
-
-    centroid_pc.set_radius(0.005)
-    centroid_pc.set_color((1,0,0))
-
-    ps.show()
 
 # ---------------------------------------------------------------------------
 # Main
@@ -121,10 +94,18 @@ def main() -> None:
     # You might want to create functions for each of the following points to keep the code clean
 
     # 2. Clustering
+    if os.path.exists("cluster_labels.npy"):
+        print("Loading saved cluster data...")
+        cluster_labels = np.load("cluster_labels.npy")
+        centroids = np.load("cluster_centroids.npy")
+    else:
+        print("Running K-Means clustering...")
+        centroids, cluster_labels = algo.k_means(points, args.clusters)
+        np.save("cluster_labels.npy", cluster_labels)
+        np.save("cluster_centroids.npy", centroids)
     # once the clustering is solved, you might consider saving the cluster in a .npy file
     # np.save("cluster_labels.npy", cluster_labels)
     # cluster_labels = np.load("cluster_labels.npy")
-    k_centroids, k_assingment, points_no_floor = algo.k_means(points, 6)
 
     # 3. Feature Extraction (PCA)
 
@@ -133,8 +114,7 @@ def main() -> None:
     # 5. SVM Classification
 
     # 6. Visualization
-    visualize(points, point_gt_labels, args.clusters)
-    visulise_kmeans(k_centroids, k_assingment, points_no_floor)
+    visualize(points, point_gt_labels, cluster_labels, args.clusters)
 
 
 if __name__ == "__main__":
