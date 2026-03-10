@@ -3,6 +3,7 @@
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.svm import SVC
+from scipy.linalg import svd
 import open3d as o3d
 import numpy as np
 import time
@@ -15,43 +16,121 @@ class Algorithms:
         self.rng = np.random.default_rng(4)
 
     def k_means(self, points, k):
-        #_points (array): data points in the shape of [number of data points, number of features]
-        # k (int): number of clusters
-        print(f"Attempting to Cluster {len(points)} points into {k} clusters")
-        centroids = self.rng.choice(points, size=k, replace=False)
-
-        assignment = np.zeros(len(points), dtype=int)
-
-        assignment_prev = None
- 
-        iterations = 0
-        start_time = time.perf_counter()
-        while assignment_prev is None or any(assignment_prev!=assignment):
-            assignment_prev= np.copy(assignment) 
-
-            # First iterate over all points
-            for i, point in enumerate(points):
-                distances2 = np.linalg.norm(centroids - point, axis=1)
-                closest_index = np.argmin(distances2)
-                assignment[i] = closest_index
-
-            # Second calculate new centroids
-            for i in range(k):
-                centroids[i] = points[assignment==i].mean(axis=0)
-
-            iterations += 1
-            current_time = time.perf_counter()
-            elapsed_time = current_time - start_time
-            minutes = elapsed_time / 60
-            print(f"On Iteration {iterations}, {elapsed_time:.1f} seconds have elapsed ({minutes:.2F} minutes)")
-
-        return centroids, assignment
+        """
+        Run KMeans using scikit-learn for stability and speed.
+        """
+        print(f"Clustering {len(points)} points into {k} clusters using sklearn KMeans...")
+        scaled = StandardScaler()
+        scaled = scaled.fit_transform(points)
+        kmeans = KMeans(n_clusters=k)
+        
+        kmeans.fit(scaled)
+        
+        centroids = kmeans.cluster_centers_
+        cluster_labels = kmeans.labels_
+        
+        print(f"Found {len(np.unique(cluster_labels))} unique clusters.")
+        
+        return centroids, cluster_labels
     
-    def pca(self):
-        pass
+    def pca(self, X, n_components=3):
+        """
+        Perform PCA using scikit-learn.
 
-    def svm(self):
-        pass
+        Parameters:
+            X : np.ndarray of shape (n_points, 3)
+            n_components : int, number of principal components to keep
+
+        Returns:
+            pc_vectors : np.ndarray (n_components, 3) principal directions
+            explained_variance : np.ndarray (n_components,) variance along each component
+        """
+        pca_model = PCA(n_components=n_components)
+        pca_model.fit(X)
+
+        pc_vectors = pca_model.components_        # shape (3,3)
+        explained_variance = pca_model.explained_variance_
+
+        return pc_vectors, explained_variance
+
+    def extract_cluster_features(self, points: np.ndarray, cluster_labels: np.ndarray, k: int):
+        
+        pca_centers = np.zeros((k, 3))
+        pca_pc1 = np.zeros((k, 3))
+        pca_pc2 = np.zeros((k, 3))
+        pca_pc3 = np.zeros((k, 3))
+        features = np.zeros((k, 3))  # linearity, planarity, scattering
+        scaled = StandardScaler()
+        scaled = scaled.fit_transform(points)
+        for i in range(k):
+            cluster_points = scaled[cluster_labels == i]
+
+            if len(cluster_points) == 0:
+                # empty cluster, skip
+                continue
+
+            # Cluster center
+            center = cluster_points.mean(axis=0)
+            pca_centers[i] = center
+
+            # PCA using scikit-learn
+            if len(cluster_points) > 1:
+                pca_model = PCA(n_components=3)
+                pca_model.fit(cluster_points)
+
+                pc_vectors = pca_model.components_       # shape (3,3)
+                eigvals = pca_model.explained_variance_  # shape (3,)
+            else:
+                # For a single point, use dummy axes
+                pc_vectors = np.eye(3)
+                eigvals = np.array([0.0, 0.0, 0.0])
+
+            # Assign principal axes
+            pca_pc1[i] = pc_vectors[0]
+            pca_pc2[i] = pc_vectors[1]
+            pca_pc3[i] = pc_vectors[2]
+
+            # Compute geometric features
+            l1, l2, l3 = eigvals
+
+            if l1 > 0:
+                linearity = (l1 - l2) / l1
+                planarity = (l2 - l3) / l1
+                scattering = l3 / l1
+            else:
+                linearity = 0.0
+                planarity = 0.0
+                scattering = 0.0
+
+            features[i] = [linearity, planarity, scattering]
+
+        return features, pca_centers, pca_pc1, pca_pc2, pca_pc3
+    
+    def generate_cluster_ground_truth(self, cluster_labels, point_gt_labels, k):
+
+        cluster_gt = np.zeros(k, dtype=int)
+
+        for i in range(k):
+
+            labels = point_gt_labels[cluster_labels == i]
+
+            if len(labels) == 0:
+                continue
+
+            # majority vote
+            values, counts = np.unique(labels, return_counts=True)
+            cluster_gt[i] = values[np.argmax(counts)]
+
+        return cluster_gt
+    
+    def svm(self, features, cluster_gt):
+        svm_model = SVC(kernel='linear', gamma=0.01, C=10, class_weight="balanced")
+
+        svm_model.fit(features, cluster_gt)
+
+        predictions = svm_model.predict(features)
+
+        return predictions
 
 if __name__ == "__main__":
     pass
