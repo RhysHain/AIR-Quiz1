@@ -6,7 +6,7 @@ import open3d as o3d
 import polyscope as ps
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import os
 from quiz1_algorithms import Algorithms
 
@@ -65,11 +65,13 @@ def visualize(points: np.ndarray, labels: np.ndarray, cluster_labels: np.ndarray
         cluster_labels,
         enabled=True
     )
-    # 4. Register PCA visualization (Cluster Centers and Principal Components)
-    pca_cloud = ps.register_point_cloud("Cluster PCA Centers", pca_centers, radius=0.002)
-    pca_cloud.add_vector_quantity("PC1 (Major)", pca_pc1, enabled=True, color=(1, 0, 0), vectortype="ambient")
-    pca_cloud.add_vector_quantity("PC2 (Minor)", pca_pc1, enabled=True, color=(0, 1, 0), vectortype="ambient")
-    pca_cloud.add_vector_quantity("PC3 (Normal)", pca_pc1, enabled=True, color=(0, 0, 1), vectortype="ambient")
+    # 4. Register PCA visualization
+    pca_cloud = ps.register_point_cloud("Cluster PCA Centers", pca_centers, radius=0.01)
+    
+    # Use standard vectors and ensure the correct variables (pc1, pc2, pc3) are passed
+    pca_cloud.add_vector_quantity("PC1 (Major)", pca_pc1, enabled=True, color=(1, 0, 0), vectortype="standard")
+    pca_cloud.add_vector_quantity("PC2 (Minor)", pca_pc2, enabled=True, color=(0, 1, 0), vectortype="standard")
+    pca_cloud.add_vector_quantity("PC3 (Normal)", pca_pc3, enabled=True, color=(0, 0, 1), vectortype="standard")
     # 5. Add SVM Predictions
     cloud.add_scalar_quantity( "Cluster Ground Truth", cluster_gt[cluster_labels], enabled=False)
     cloud.add_scalar_quantity("SVM Predictions", point_predictions, enabled=True)
@@ -101,6 +103,7 @@ def main() -> None:
         np.save("Airport_Scan_Label.npy", point_gt_labels)
         print(f"Loaded {len(points)} points from {args.path}")
 
+    # centroids, cluster_labels = algo.k_means(points, args.clusters)
 
     # 2. Clustering
     if os.path.exists("cluster_labels.npy"):
@@ -124,6 +127,7 @@ def main() -> None:
     # 5. SVM Classification
     predictions = algo.svm(features, cluster_gt, eigvals)
     point_predictions = predictions[cluster_labels]
+
     # 6. Visualization
     visualize(points, point_gt_labels, cluster_labels, args.clusters,  
                 pca_centers, pca_pc1, pca_pc2, pca_pc3, cluster_gt, point_predictions)

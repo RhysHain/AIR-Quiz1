@@ -9,6 +9,9 @@ import numpy as np
 import time
 
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_predict, StratifiedKFold, cross_val_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import confusion_matrix
 
 class Algorithms:
 
@@ -16,10 +19,6 @@ class Algorithms:
         self.rng = np.random.default_rng(4)
 
     def k_means(self, points, k):
-        """
-        Run KMeans using scikit-learn for stability and speed.
-        """
-        print(f"Clustering {len(points)} points into {k} clusters using sklearn KMeans...")
         scaled = StandardScaler()
         scaled = scaled.fit_transform(points)
         kmeans = KMeans(n_clusters=k)
@@ -28,8 +27,6 @@ class Algorithms:
         
         centroids = kmeans.cluster_centers_
         cluster_labels = kmeans.labels_
-        
-        print(f"Found {len(np.unique(cluster_labels))} unique clusters.")
         
         return centroids, cluster_labels
     
@@ -122,18 +119,75 @@ class Algorithms:
 
         return cluster_gt
     
+    # Function that allows for searching for best svm variables
+    # def svm(self, features, cluster_gt, eigvals):
+    #     # 1. Prepare and Scale
+    #     X = np.hstack([features, eigvals])
+    #     scaler = StandardScaler()
+    #     X_scaled = scaler.fit_transform(X)
+
+    #     # 2. Define the Search (This is Option 3)
+    #     param_grid = {
+    #         'C': [0.1, 1, 10, 100],
+    #         'gamma': [1, 0.1, 0.01, 'scale'],
+    #         'kernel': ['rbf'] # RBF is usually superior for these features
+    #     }
+
+    #     # 3. Run the search
+    #     # cv=5 means it tests each setting 5 times on different data slices
+    #     grid = GridSearchCV(
+    #         SVC(class_weight='balanced'), 
+    #         param_grid, 
+    #         cv=5, 
+    #         scoring='f1_macro' # Optimizes for both classes equally
+    #     )
+        
+    #     print("Searching for best SVM parameters...")
+    #     grid.fit(X_scaled, cluster_gt)
+        
+    #     # 4. Use the best version found
+    #     best_model = grid.best_estimator_
+    #     print(f"Best settings found: {grid.best_params_}")
+
+    #     # 5. Predict
+    #     # You can now use cross_val_predict with the 'best_model' 
+    #     # or just predict on the current set
+    #     predictions = cross_val_predict(best_model, X_scaled, cluster_gt, cv=10)
+
+    #     return predictions
+    
     def svm(self, features, cluster_gt, eigvals):
-
-        X = np.hstack([features, eigvals]) 
-
-        # Scale before SVM
+        # 1. Combine and Scale Features
+        X = np.hstack([features, eigvals])
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
-        svm_model = SVC(kernel='linear', gamma=0.01, C=10, class_weight="balanced")
+        
+        # 2. Setup the SVM
+        # Using 'rbf' often handles the 10% held-out data better than 'linear'
+        svm_model = SVC(kernel='linear', C=1, class_weight='balanced', gamma=0.01)
+        
+        # 3. Perform Cross-Validation
+        # cv=10 splits the data into 10 parts (90% train, 10% test)
+        # predictions will be a (k,) array where each prediction was made 
+        # when that specific cluster was in the 10% "unseen" group.
+        predictions = cross_val_predict(svm_model, X_scaled, cluster_gt, cv=10)
 
-        svm_model.fit(X_scaled, cluster_gt)
 
-        predictions = svm_model.predict(X_scaled)
+        
+        # 4. Calculate the ground vs not-ground percentages
+        # Assuming 0 = Ground, 1 = Not Ground
+        # cm = confusion_matrix(cluster_gt, predictions, labels=[0, 1])
+        
+        # ground_acc = (cm[0, 0] / cm[0, :].sum()) * 100
+        # not_ground_acc = (cm[1, 1] / cm[1, :].sum()) * 100
+        
+        # print(f"Cross-Validated Ground Accuracy:     {ground_acc:.2f}%")
+        # print(f"Cross-Validated Not Ground Accuracy: {not_ground_acc:.2f}%")
+
+        cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+        scores = cross_val_score(svm_model, X_scaled, cluster_gt, cv=cv)
+
+        print(f"Honest Mean Accuracy: {scores.mean() * 100:.2f}%")
 
         return predictions
 
