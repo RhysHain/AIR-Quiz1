@@ -185,9 +185,11 @@ class Algorithms:
         # print(f"Cross-Validated Not Ground Accuracy: {not_ground_acc:.2f}%")
 
         cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-        scores = cross_val_score(svm_model, X_scaled, cluster_gt, cv=cv)
+        scores = cross_val_score(svm_model, X_scaled, cluster_gt, cv=10)
 
-        print(f"Honest Mean Accuracy: {scores.mean() * 100:.2f}%")
+        print(f"10-Fold Cross-Validation Results:")
+        print(f"Mean Accuracy: {scores.mean() * 100:.2f}%")
+        print(f"Standard Deviation: {scores.std() * 100:.2f}%")
 
         return predictions
 

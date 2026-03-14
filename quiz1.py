@@ -40,8 +40,9 @@ def load_ply_point_cloud(path: str) -> Tuple[np.ndarray, Optional[np.ndarray]]:
 # ---------------------------------------------------------------------------
 # Visualization
 # ---------------------------------------------------------------------------
-def visualize(points: np.ndarray, labels: np.ndarray, cluster_labels: np.ndarray, k: int, 
-              pca_centers, pca_pc1, pca_pc2, pca_pc3, cluster_gt, point_predictions) -> None:
+def visualize(points: np.ndarray, labels: np.ndarray, cluster_labels: np.ndarray, k: int,  
+              pca_centers: np.ndarray, pca_pc1: np.ndarray, pca_pc2: np.ndarray, pca_pc3: np.ndarray, cluster_gt: np.ndarray, 
+              point_predictions: np.ndarray) -> None:
     """
     Set up Polyscope serialization.
     """
@@ -66,7 +67,7 @@ def visualize(points: np.ndarray, labels: np.ndarray, cluster_labels: np.ndarray
         enabled=True
     )
     # 4. Register PCA visualization
-    pca_cloud = ps.register_point_cloud("Cluster PCA Centers", pca_centers, radius=0.01)
+    pca_cloud = ps.register_point_cloud("Cluster PCA Centers", pca_centers, radius=0.003, color=(0,0,0))
     
     # Use standard vectors and ensure the correct variables (pc1, pc2, pc3) are passed
     pca_cloud.add_vector_quantity("PC1 (Major)", pca_pc1, enabled=True, color=(1, 0, 0), vectortype="standard")
@@ -129,7 +130,7 @@ def main() -> None:
     point_predictions = predictions[cluster_labels]
 
     # 6. Visualization
-    visualize(points, point_gt_labels, cluster_labels, args.clusters,  
+    visualize(points, point_gt_labels, cluster_labels, args.clusters,   
                 pca_centers, pca_pc1, pca_pc2, pca_pc3, cluster_gt, point_predictions)
 
 
